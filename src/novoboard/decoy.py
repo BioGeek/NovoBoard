@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 _SPACE_PATTERN = re.compile(r' |\r|\n')
 _PEPMASS_PATTERN = re.compile(r'=| |\r|\n')
 _CHARGE_PATTERN = re.compile(r'=|\+|\r|\n')
-_SCANS_PATTERN = re.compile(r'=|\r|\n')
 
 
 def _collect_peaks_distribution(
