@@ -1,13 +1,28 @@
 """Decoy FDR calculation and validation."""
 
+from __future__ import annotations
+
 import os.path
+from typing import Any
+
 import numpy as np
 import pandas as pd
 from novoboard.accuracy import WorkerTest
 
 
-def read_denovo(denovo_csv, selected_features=None):
-    """Read de novo sequencing results from CSV file."""
+def read_denovo(
+    denovo_csv: str,
+    selected_features: set[str] | None = None,
+) -> pd.DataFrame:
+    """Read de novo sequencing results from CSV file.
+    
+    Args:
+        denovo_csv: Path to CSV file from PEAKS de novo
+        selected_features: Optional set of feature IDs to keep
+    
+    Returns:
+        DataFrame with feature_id column added
+    """
     denovo_psm = pd.read_csv(denovo_csv, keep_default_na=False)
     # Vectorized feature_id creation
     denovo_psm['feature_id'] = (
@@ -20,28 +35,44 @@ def read_denovo(denovo_csv, selected_features=None):
     return denovo_psm
 
 
-def calculate_FDR(target_csv, decoy_csv, engine_score, fdr_list, selected_features=None):
-    """Calculate FDR using target-decoy approach."""
-    print("target_csv =", target_csv)
-    print("decoy_csv =", decoy_csv)
+def calculate_FDR(
+    target_csv: str,
+    decoy_csv: str,
+    engine_score: str,
+    fdr_list: list[float],
+    selected_features: set[str] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[float], list[int]]:
+    """Calculate FDR using target-decoy approach.
+    
+    Args:
+        target_csv: Path to target (original) de novo results
+        decoy_csv: Path to decoy de novo results
+        engine_score: Column name for scoring
+        fdr_list: List of FDR thresholds to calculate
+        selected_features: Optional set of feature IDs to consider
+    
+    Returns:
+        Tuple of (combined_df, fdr_df, score_thresholds, counts)
+    """
+    print(f"target_csv = {target_csv}")
+    print(f"decoy_csv = {decoy_csv}")
     target_psm = read_denovo(target_csv, selected_features)
     decoy_psm = read_denovo(decoy_csv, selected_features)
-    print("len(target_psm) =", len(target_psm)); print("len(decoy_psm) =", len(decoy_psm))
+    print(f"len(target_psm) = {len(target_psm)}")
+    print(f"len(decoy_psm) = {len(decoy_psm)}")
     dfs = pd.concat([target_psm, decoy_psm], keys=['target', 'decoy']).reset_index().rename(columns={'level_0': 'spectrum'})
     # Vectorized is_target
     dfs['is_target'] = dfs['spectrum'] == 'target'
 
     # target-decoy competition
     dfs.sort_values(by=[engine_score, 'is_target'], ascending=[False, False], inplace=True)
-    # 1-1 competition on each scan id
-#     dfs_fdr = dfs.drop_duplicates(subset=['feature_id'])
     # competition on whole dataset
     dfs_fdr = dfs.copy()
     # Vectorized feature_id modification for decoys
     dfs_fdr.loc[~dfs_fdr['is_target'], 'feature_id'] = dfs_fdr.loc[~dfs_fdr['is_target'], 'feature_id'] + '||decoy'
-    print("len(dfs) =", len(dfs))
-    print("len(dfs_fdr) =", len(dfs_fdr))
-    print("sum(dfs_fdr['is_target']) =", sum(dfs_fdr['is_target']))
+    print(f"len(dfs) = {len(dfs)}")
+    print(f"len(dfs_fdr) = {len(dfs_fdr)}")
+    print(f"sum(dfs_fdr['is_target']) = {sum(dfs_fdr['is_target'])}")
     
     # fdr estimation
     cumsum = range(1, len(dfs_fdr) + 1)
@@ -50,8 +81,8 @@ def calculate_FDR(target_csv, decoy_csv, engine_score, fdr_list, selected_featur
     estimated_fdr = cumsum_decoy / cumsum_target
     dfs_fdr['estimated_fdr'] = estimated_fdr
 
-    score_list = []
-    count_list = []
+    score_list: list[float] = []
+    count_list: list[int] = []
     for fdr in fdr_list:
         fdr_index = np.flatnonzero(estimated_fdr <= fdr)
         fdr_index = fdr_index[-1] if len(fdr_index) > 0 else 0
@@ -61,21 +92,46 @@ def calculate_FDR(target_csv, decoy_csv, engine_score, fdr_list, selected_featur
     return dfs, dfs_fdr, score_list, count_list
 
 
-def validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_decoy, T_pct, col_score, col_aa_score):
-    """Validate FDR estimation against known database matches."""
+def validate_FDR(
+    target_csv: str,
+    decoy_csv: str,
+    engine_score: str,
+    db_csv: str,
+    spectrum_file: str,
+    p_decoy: list[float],
+    T_pct: float,
+    col_score: str,
+    col_aa_score: str,
+) -> dict[str, Any]:
+    """Validate FDR estimation against known database matches.
+    
+    Args:
+        target_csv: Path to target de novo results
+        decoy_csv: Path to decoy de novo results
+        engine_score: Column name for scoring
+        db_csv: Path to database search results (ground truth)
+        spectrum_file: Path to MGF spectrum file
+        p_decoy: List of FDR thresholds
+        T_pct: Threshold percentage for ion matching
+        col_score: Score column name for accuracy calculation
+        col_aa_score: AA score column name
+    
+    Returns:
+        Dictionary with validation results including DataFrames and FDR curves
+    """
     db_psm = pd.read_csv(db_csv, keep_default_na=False)
     # Vectorized feature_id creation
     db_psm['feature_id'] = (
         db_psm['Source File'].str.split('.mgf').str[0] + '.mgf||' + 
         db_psm['Scan'].astype(str)
     )
-    selected_features = None # set(db_psm['feature_id'])
+    selected_features = None  # set(db_psm['feature_id'])
 
     dfs, dfs_fdr, score_list, count_list = calculate_FDR(target_csv, decoy_csv, engine_score, p_decoy, selected_features)
 
-    target_decoy_csv = target_csv + '-' + decoy_csv.split('/')[-1]
+    target_decoy_csv = f"{target_csv}-{decoy_csv.split('/')[-1]}"
     dfs_fdr.to_csv(target_decoy_csv, index=False)
-    accuracy_file = target_decoy_csv + '.accuracy'
+    accuracy_file = f"{target_decoy_csv}.accuracy"
     if not os.path.isfile(accuracy_file):
         worker_test = WorkerTest(db_csv, target_decoy_csv, spectrum_file, col_score, col_aa_score)
         worker_test.test_accuracy()
@@ -99,11 +155,11 @@ def validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_d
     denovo_df['matched_ion'] = accuracy_df['matched_ion']
     denovo_df['recall_peptide_I'] = accuracy_df['matched_ion'] == accuracy_df['target_ion']
     denovo_df['recall_peptide_T'] = accuracy_df['matched_ion'] >= accuracy_df['target_ion'] * T_pct
-    print("len(denovo_df) =", len(denovo_df))
-    print("  with recall_AA =", len(denovo_df[~denovo_df['recall_AA'].isna()]))
+    print(f"len(denovo_df) = {len(denovo_df)}")
+    print(f"  with recall_AA = {len(denovo_df[~denovo_df['recall_AA'].isna()])}")
     # Fix the boolean indexing warning
     mask = ~denovo_df['recall_AA'].isna() & denovo_df['is_target']
-    print("    is_target =", mask.sum())
+    print(f"    is_target = {mask.sum()}")
 
     # calculate true FDR on annotated target spectra
     df = denovo_df[~denovo_df['recall_AA'].isna() & denovo_df['is_target']].copy()
@@ -118,35 +174,35 @@ def validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_d
     cumsum_false = cumsum - cumsum_correct
     true_fdr_T = cumsum_false / cumsum
     # only report entries with decreasing fdr from the bottom to avoid bumps
-    min_est, min_true = 1, 1
-    reported = []
+    min_est, min_true = 1.0, 1.0
+    reported: list[tuple[float, int, float, float, float]] = []
     for x, y, z, v, w in list(zip(df['estimated_fdr'], cumsum, true_fdr, true_fdr_I, true_fdr_T))[::-1]:
         if x <= min_est and w <= min_true:
             min_est = x
             min_true = w
             reported.append((x, y, z, v, w))
-    estimated_fdr, cumsum, true_fdr, true_fdr_I, true_fdr_T = zip(*reported)
+    estimated_fdr_out, cumsum_out, true_fdr_out, true_fdr_I_out, true_fdr_T_out = zip(*reported)
     
     # calculate estimated FDR and #PSMs on all target spectra
     df_target = denovo_df[denovo_df['is_target']].copy()
     cumsum_full = range(1, len(df_target) + 1)
     # only report entries with decreasing fdr from the bottom to avoid bumps
-    min_est = 1
-    reported = []
+    min_est = 1.0
+    reported_full: list[tuple[float, int]] = []
     for x, y in list(zip(df_target['estimated_fdr'], cumsum_full))[::-1]:
         if x <= min_est:
             min_est = x
-            reported.append((x, y))
-    estimated_fdr_full, cumsum_full = zip(*reported)
+            reported_full.append((x, y))
+    estimated_fdr_full, cumsum_full_out = zip(*reported_full)
     
     return {
         'denovo_df': denovo_df, 
         'df': df, 
-        'estimated_fdr': estimated_fdr,
-        'cumsum': cumsum,
-        'true_fdr': true_fdr,
-        'true_fdr_I': true_fdr_I,
-        'true_fdr_T': true_fdr_T,
+        'estimated_fdr': estimated_fdr_out,
+        'cumsum': cumsum_out,
+        'true_fdr': true_fdr_out,
+        'true_fdr_I': true_fdr_I_out,
+        'true_fdr_T': true_fdr_T_out,
         'estimated_fdr_full': estimated_fdr_full,
-        'cumsum_full': cumsum_full,
+        'cumsum_full': cumsum_full_out,
     }

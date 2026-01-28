@@ -1,12 +1,10 @@
 """Calculate fragment ion, amino acid, and peptide accuracies."""
 
+from __future__ import annotations
+
 import re
 import csv
 import numpy as np
-import pandas as pd
-import seaborn as sns
-from matplotlib import pyplot
-import os.path
 from novoboard import config
 
 
@@ -18,9 +16,19 @@ col_source_file = "Source File"
 col_scan_list = "Scan"
 
 
-def parse_raw_sequence(raw_sequence: str):
+def parse_raw_sequence(raw_sequence: str) -> tuple[bool, list[str]]:
+    """Parse a raw peptide sequence with modifications.
+    
+    Args:
+        raw_sequence: Peptide sequence string with optional modifications
+                     (e.g., "PEPTC(+57.02)DE")
+    
+    Returns:
+        Tuple of (success, peptide_list) where success is True if all
+        amino acids and modifications are recognized.
+    """
     raw_sequence_len = len(raw_sequence)
-    peptide = []
+    peptide: list[str] = []
     index = 0
     while index < raw_sequence_len:
         if raw_sequence[index] == "(":
@@ -46,7 +54,6 @@ def parse_raw_sequence(raw_sequence: str):
                 peptide[-1] = "Y(Phosphorylation)"
                 index += 8
             else:  # unknown modification
-                # logger.warning(f"unknown modification in seq {raw_sequence}")
                 return False, peptide
         else:
             peptide.append(raw_sequence[index])
@@ -54,51 +61,67 @@ def parse_raw_sequence(raw_sequence: str):
 
     for aa in peptide:
         if aa not in config.vocab:
-            # logger.warning(f"unknown modification in seq {raw_sequence}")
             return False, peptide
     return True, peptide
 
 
-class WorkerTest(object):
-    """TODO(nh2tran): docstring.
-       The WorkerTest should be stand-alone and separated from other workers.
+class WorkerTest:
+    """Calculate accuracy metrics for de novo peptide sequencing.
+    
+    Compares predicted peptide sequences against target (database) sequences
+    and calculates fragment ion, amino acid, and peptide-level accuracy metrics.
     """
 
-    def __init__(self, target_file, predicted_file, spectrum_file, col_score, col_aa_score):
-        """TODO(nh2tran): docstring."""
-
-        print("".join(["="] * 80))  # section-separating line
+    def __init__(
+        self,
+        target_file: str,
+        predicted_file: str,
+        spectrum_file: str,
+        col_score: str,
+        col_aa_score: str,
+    ) -> None:
+        """Initialize WorkerTest with file paths and column names.
+        
+        Args:
+            target_file: Path to CSV file containing target (database) peptides
+            predicted_file: Path to CSV file containing predicted peptides
+            spectrum_file: Path to MGF file containing spectra
+            col_score: Column name for peptide score
+            col_aa_score: Column name for amino acid scores
+        """
+        print("=" * 80)
         print("WorkerTest.__init__()")
 
-        # we currently use deepnovo_config to store both const & settings
-        # the settings should be shown in __init__() to keep track carefully
-        self.MZ_MAX = config.MZ_MAX
+        self.MZ_MAX: float = config.MZ_MAX
 
         self.target_file = target_file
         self.predicted_file = predicted_file
         self.spectrum_file = spectrum_file
-        self.accuracy_file = predicted_file + ".accuracy"
-        self.denovo_only_file = predicted_file + ".denovo_only"
-        self.scan2fea_file = predicted_file + ".scan2fea"
-        self.multifea_file = predicted_file + ".multifea"
+        self.accuracy_file = f"{predicted_file}.accuracy"
+        self.denovo_only_file = f"{predicted_file}.denovo_only"
+        self.scan2fea_file = f"{predicted_file}.scan2fea"
+        self.multifea_file = f"{predicted_file}.multifea"
         self.col_score = col_score
         self.col_aa_score = col_aa_score
-        print("target_file = {0:s}".format(self.target_file))
-        print("predicted_file = {0:s}".format(self.predicted_file))
-        print("spectrum_file = {0:s}".format(self.spectrum_file))
-        print("accuracy_file = {0:s}".format(self.accuracy_file))
-        print("denovo_only_file = {0:s}".format(self.denovo_only_file))
-        print("scan2fea_file = {0:s}".format(self.scan2fea_file))
-        print("multifea_file = {0:s}".format(self.multifea_file))
+        print(f"target_file = {self.target_file}")
+        print(f"predicted_file = {self.predicted_file}")
+        print(f"spectrum_file = {self.spectrum_file}")
+        print(f"accuracy_file = {self.accuracy_file}")
+        print(f"denovo_only_file = {self.denovo_only_file}")
+        print(f"scan2fea_file = {self.scan2fea_file}")
+        print(f"multifea_file = {self.multifea_file}")
 
-        self.target_dict = {}
-        self.predicted_list = []
-        self.spectrum_dict = {}
+        self.target_dict: dict[str, list[str]] = {}
+        self.predicted_list: list[dict] = []
+        self.spectrum_dict: dict[str, list[tuple[float, float]]] = {}
 
-    def test_accuracy(self, db_peptide_list=None):
-        """TODO(nh2tran): docstring."""
-
-        print("".join(["="] * 80))  # section-separating line
+    def test_accuracy(self, db_peptide_list: list[list[str]] | None = None) -> None:
+        """Calculate accuracy metrics between predicted and target peptides.
+        
+        Args:
+            db_peptide_list: Optional list of peptides to filter targets
+        """
+        print("=" * 80)
         print("WorkerTest.test_accuracy()")
 
         # write the accuracy of predicted peptides
@@ -135,14 +158,14 @@ class WorkerTest(object):
 
         self._get_target()
         target_count_total = len(self.target_dict)
-        target_len_total = sum([len(x) for x in self.target_dict.values()])
+        target_len_total = sum(len(x) for x in self.target_dict.values())
 
         # this part is tricky!
         # some target peptides are reported by PEAKS DB but not found in
         #   db_peptide_list due to mistakes in cleavage rules.
         # if db_peptide_list is given, we only consider those target peptides,
         #   otherwise, use all target peptides
-        target_dict_db = {}
+        target_dict_db: dict[str, list[str]] = {}
         if db_peptide_list is not None:
             for feature_id, target in self.target_dict.items():
                 target_simplied = target
@@ -153,19 +176,19 @@ class WorkerTest(object):
                 if target_simplied in db_peptide_list:
                     target_dict_db[feature_id] = target
                 else:
-                    print("target not found: ", target_simplied)
+                    print(f"target not found: {target_simplied}")
         else:
             target_dict_db = self.target_dict
         target_count_db = len(target_dict_db)
-        target_len_db = sum([len(x) for x in target_dict_db.values()])
+        target_len_db = sum(len(x) for x in target_dict_db.values())
 
         # we also skip target peptides with precursor_mass > MZ_MAX
-        target_dict_db_mass = {}
+        target_dict_db_mass: dict[str, list[str]] = {}
         for feature_id, peptide in target_dict_db.items():
             if self._compute_peptide_mass(peptide) <= self.MZ_MAX:
                 target_dict_db_mass[feature_id] = peptide
         target_count_db_mass = len(target_dict_db_mass)
-        target_len_db_mass = sum([len(x) for x in target_dict_db_mass.values()])
+        target_len_db_mass = sum(len(x) for x in target_dict_db_mass.values())
 
         # read predicted peptides from deepnovo or peaks
         self._get_predicted_peaks_11()
@@ -186,12 +209,12 @@ class WorkerTest(object):
         recall_all_peptide_ions_total = 0.0
 
         # record scan with multiple features
-        scan_dict = {}
+        scan_dict: dict[str, dict] = {}
 
         # read spectra to calculate fragment ion accuracy
         self._get_spectra()
 
-        id_set = set()
+        id_set: set[str] = set()
         for index, predicted in enumerate(self.predicted_list):
 
             feature_id = predicted["feature_id"]
@@ -204,7 +227,7 @@ class WorkerTest(object):
             feature_scan_list_middle = predicted["scan_list_middle"]
             feature_scan_list_original = predicted["scan_list_original"]
             if feature_scan_list_original:
-                for scan in re.split(';|\r|\n', feature_scan_list_original):
+                for scan in re.split(r';|\r|\n', feature_scan_list_original):
                     if scan in scan_dict:
                         scan_dict[scan]["feature_count"] += 1
                         scan_dict[scan]["feature_list"].append(feature_id)
@@ -261,25 +284,25 @@ class WorkerTest(object):
 
                 # convert to string format to print out
                 target_sequence = ",".join(target)
-                predicted_sequence = ",".join(predicted_sequence)
-                predicted_score = "{0:.2f}".format(predicted_score)
-                recall_AA = "{0:d}".format(recall_AA)
-                predicted_len = "{0:d}".format(predicted_len)
-                target_len = "{0:d}".format(target_len)
-                target_ion = "{0:d}".format(target_ion)
-                matched_ion = "{0:d}".format(matched_ion)
+                predicted_sequence_str = ",".join(predicted_sequence)
+                predicted_score_str = f"{predicted_score:.2f}"
+                recall_AA_str = f"{recall_AA:d}"
+                predicted_len_str = f"{predicted_len:d}"
+                target_len_str = f"{target_len:d}"
+                target_ion_str = f"{target_ion:d}"
+                matched_ion_str = f"{matched_ion:d}"
                 print_list = [feature_id,
                               feature_area,
                               target_sequence,
-                              predicted_sequence,
-                              predicted_score,
+                              predicted_sequence_str,
+                              predicted_score_str,
                               predicted_aa_score,
-                              recall_AA,
+                              recall_AA_str,
                               aa_match,
-                              predicted_len,
-                              target_len,
-                              target_ion,
-                              matched_ion,
+                              predicted_len_str,
+                              target_len_str,
+                              target_ion_str,
+                              matched_ion_str,
                               unmatched_ion_list,
                               feature_scan_list_middle,
                               feature_scan_list_original]
@@ -287,16 +310,16 @@ class WorkerTest(object):
                 print(print_row, file=accuracy_handle, end="\n")
             else:
                 predicted_only += 1
-                predicted_sequence = ';'.join([','.join(x) for x in predicted["sequence"]])
-                predicted_score = ';'.join(['{0:.2f}'.format(x) for x in predicted["score"]])
+                predicted_sequence_out = ';'.join([','.join(x) for x in predicted["sequence"]])
+                predicted_score_out = ';'.join([f'{x:.2f}' for x in predicted["score"]])
                 if predicted["score"]:
-                    predicted_score_max = '{0:.2f}'.format(np.max(predicted["score"]))
+                    predicted_score_max = f'{np.max(predicted["score"]):.2f}'
                 else:
                     predicted_score_max = ''
                 print_list = [feature_id,
                               feature_area,
-                              predicted_sequence,
-                              predicted_score,
+                              predicted_sequence_out,
+                              predicted_score_out,
                               predicted_score_max,
                               feature_scan_list_middle,
                               feature_scan_list_original]
@@ -306,16 +329,16 @@ class WorkerTest(object):
         accuracy_handle.close()
         denovo_only_handle.close()
 
-        multifea_dict = {}
+        multifea_dict: dict[str, list[str]] = {}
         for scan_id, value in scan_dict.items():
             feature_count = value["feature_count"]
             feature_list = value["feature_list"]
             if feature_count > 1:
                 for feature_id in feature_list:
                     if feature_id in multifea_dict:
-                        multifea_dict[feature_id].append(scan_id + ':' + str(feature_count))
+                        multifea_dict[feature_id].append(f'{scan_id}:{feature_count}')
                     else:
-                        multifea_dict[feature_id] = [scan_id + ':' + str(feature_count)]
+                        multifea_dict[feature_id] = [f'{scan_id}:{feature_count}']
 
         with open(self.scan2fea_file, 'w') as handle:
             header_list = ["scan_id",
@@ -341,57 +364,62 @@ class WorkerTest(object):
                 print_row = "\t".join(print_list)
                 print(print_row, file=handle, end="\n")
 
-        print("target_count_total = {0:d}".format(target_count_total))
-        print("target_len_total = {0:d}".format(target_len_total))
-        print("target_count_db = {0:d}".format(target_count_db))
-        print("target_len_db = {0:d}".format(target_len_db))
-        print("target_count_db_mass: {0:d}".format(target_count_db_mass))
-        print("target_len_db_mass: {0:d}".format(target_len_db_mass))
+        print(f"target_count_total = {target_count_total:d}")
+        print(f"target_len_total = {target_len_total:d}")
+        print(f"target_count_db = {target_count_db:d}")
+        print(f"target_len_db = {target_len_db:d}")
+        print(f"target_count_db_mass: {target_count_db_mass:d}")
+        print(f"target_len_db_mass: {target_len_db_mass:d}")
         print()
 
-        print("predicted_count_mass: {0:d}".format(predicted_count_mass))
-        print("predicted_count_mass_db: {0:d}".format(predicted_count_mass_db))
-        print("predicted_len_mass_db: {0:d}".format(predicted_len_mass_db))
-        print("predicted_only: {0:d}".format(predicted_only))
+        print(f"predicted_count_mass: {predicted_count_mass:d}")
+        print(f"predicted_count_mass_db: {predicted_count_mass_db:d}")
+        print(f"predicted_len_mass_db: {predicted_len_mass_db:d}")
+        print(f"predicted_only: {predicted_only:d}")
         print()
 
-        print("recall_AA_total = {0:.4f}".format(recall_AA_total / target_len_total))
-        print("recall_AA_db = {0:.4f}".format(recall_AA_total / target_len_db))
-        print("recall_AA_db_mass = {0:.4f}".format(recall_AA_total / target_len_db_mass))
-        print("recall_peptide_total = {0:.4f}".format(recall_peptide_total / target_count_total))
-        print("recall_peptide_db = {0:.4f}".format(recall_peptide_total / target_count_db))
-        print("recall_peptide_db_mass = {0:.4f}".format(recall_peptide_total / target_count_db_mass))
-        print("precision_AA_mass_db  = {0:.4f}".format(recall_AA_total / predicted_len_mass_db))
-        print("precision_peptide_mass_db  = {0:.4f}".format(recall_peptide_total / predicted_count_mass_db))
+        print(f"recall_AA_total = {recall_AA_total / target_len_total:.4f}")
+        print(f"recall_AA_db = {recall_AA_total / target_len_db:.4f}")
+        print(f"recall_AA_db_mass = {recall_AA_total / target_len_db_mass:.4f}")
+        print(f"recall_peptide_total = {recall_peptide_total / target_count_total:.4f}")
+        print(f"recall_peptide_db = {recall_peptide_total / target_count_db:.4f}")
+        print(f"recall_peptide_db_mass = {recall_peptide_total / target_count_db_mass:.4f}")
+        print(f"precision_AA_mass_db  = {recall_AA_total / predicted_len_mass_db:.4f}")
+        print(f"precision_peptide_mass_db  = {recall_peptide_total / predicted_count_mass_db:.4f}")
         print()
 
-        print("recall_ion = {0:.4f}".format(matched_ion_total / target_ion_total))
-        print("precision_ion = {0:.4f}".format(matched_ion_total / predicted_ion_total))
-        print("recall_all_peptide_ions = {0:.4f}".format(recall_all_peptide_ions_total / target_count_db_mass))
-        print("target_ion_total =", target_ion_total)
-        print("matched_ion_total =", matched_ion_total)
+        print(f"recall_ion = {matched_ion_total / target_ion_total:.4f}")
+        print(f"precision_ion = {matched_ion_total / predicted_ion_total:.4f}")
+        print(f"recall_all_peptide_ions = {recall_all_peptide_ions_total / target_count_db_mass:.4f}")
+        print(f"target_ion_total = {target_ion_total}")
+        print(f"matched_ion_total = {matched_ion_total}")
         print()
 
-    def _compute_peptide_mass(self, peptide):
-        """TODO(nh2tran): docstring."""
-
+    def _compute_peptide_mass(self, peptide: list[str]) -> float:
+        """Compute the monoisotopic mass of a peptide.
+        
+        Args:
+            peptide: List of amino acid strings (including modifications)
+        
+        Returns:
+            Peptide mass including N/C-terminal groups
+        """
         peptide_mass = (config.mass_N_terminus
                         + sum(config.mass_AA[aa] for aa in peptide)
                         + config.mass_C_terminus)
 
         return peptide_mass
 
-    def _get_predicted_peaks_11(self):
-        """TODO(nh2tran): docstring."""
-
-        print("".join(["="] * 80))  # section-separating line
+    def _get_predicted_peaks_11(self) -> None:
+        """Read predicted peptides from PEAKS output CSV file."""
+        print("=" * 80)
         print("WorkerTest._get_predicted_peaks_11()")
 
-        predicted_list = []
+        predicted_list: list[dict] = []
         with open(self.predicted_file, 'r') as handle:
             csv_reader = csv.DictReader(handle)
             for row in csv_reader:
-                predicted = {}
+                predicted: dict = {}
                 predicted["feature_id"] = row[col_source_file].split('.mgf')[0] + '.mgf' + "||" + row[col_scan_list]
                 raw_sequence = row["Peptide"]
                 assert raw_sequence, "Error: wrong format."
@@ -412,13 +440,12 @@ class WorkerTest(object):
 
         self.predicted_list = predicted_list
 
-    def _get_target(self):
-        """TODO(nh2tran): docstring."""
-
-        print("".join(["="] * 80))  # section-separating line
+    def _get_target(self) -> None:
+        """Read target peptides from database search CSV file."""
+        print("=" * 80)
         print("WorkerTest._get_target()")
 
-        target_dict = {}
+        target_dict: dict[str, list[str]] = {}
         with open(self.target_file, 'r') as handle:
             header_line = handle.readline()
             header = [x.strip('"') for x in header_line.strip().split(',')]
@@ -428,9 +455,9 @@ class WorkerTest(object):
             scan_index = header.index(col_scan_list)
 
             for line in handle:
-                line = [x.strip('"') for x in re.split(',|\r|\n', line)]
-                feature_id = line[source_file_index] + "||" + line[scan_index]
-                raw_sequence = line[raw_sequence_index]
+                line_parts = [x.strip('"') for x in re.split(r',|\r|\n', line)]
+                feature_id = line_parts[source_file_index] + "||" + line_parts[scan_index]
+                raw_sequence = line_parts[raw_sequence_index]
                 assert raw_sequence, "Error: wrong target format."
                 okay, peptide = parse_raw_sequence(raw_sequence)
                 if not okay:
@@ -439,10 +466,9 @@ class WorkerTest(object):
                 target_dict[feature_id] = peptide
         self.target_dict = target_dict
 
-    def _get_spectra(self):
-        """TODO(nh2tran): docstring."""
-
-        print("".join(["="] * 80))  # section-separating line
+    def _get_spectra(self) -> None:
+        """Read spectra from MGF file."""
+        print("=" * 80)
         print("WorkerTest._get_spectra()")
 
         with open(self.spectrum_file, 'r') as f_in:
@@ -452,28 +478,42 @@ class WorkerTest(object):
                     break
                 if line == '\n':  # empty line
                     continue
-                peak_list = []
-                while not "END IONS" in line:
+                peak_list: list[tuple[float, float]] = []
+                while "END IONS" not in line:
                     # parse header lines
                     if 'BEGIN IONS' in line or '=' in line:
                         if "TITLE=" in line:
-                            source_file = re.split('[=\r\n]', line)[1].split('\\')[-1].split('.raw')[0] + '.mgf'
+                            source_file = re.split(r'[=\r\n]', line)[1].split('\\')[-1].split('.raw')[0] + '.mgf'
                         if line[:6] == "SCANS=":
-                            scan = re.split('[=\r\n]', line)[1]
+                            scan = re.split(r'[=\r\n]', line)[1]
                         line = f_in.readline()
                         continue
                     # parse ions
-                    mz, intensity = re.split(' |\t|\r|\n', line)[:2]
+                    mz, intensity = re.split(r' |\t|\r|\n', line)[:2]
                     peak_list.append((float(mz), float(intensity)))
                     line = f_in.readline()
-                feature_id = source_file + '||' + scan
+                feature_id = f'{source_file}||{scan}'
                 self.spectrum_dict[feature_id] = peak_list
-        print("len(self.spectrum_dict) =", len(self.spectrum_dict))
+        print(f"len(self.spectrum_dict) = {len(self.spectrum_dict)}")
         print()
 
-    def _match_AA_novor(self, target, predicted):
-        """TODO(nh2tran): docstring."""
-
+    def _match_AA_novor(
+        self,
+        target: list[int],
+        predicted: list[int],
+    ) -> tuple[int, str]:
+        """Match amino acids between target and predicted using cumulative mass.
+        
+        Uses the Novor-style matching algorithm based on cumulative mass
+        alignment with tolerance thresholds.
+        
+        Args:
+            target: List of target amino acid IDs
+            predicted: List of predicted amino acid IDs
+        
+        Returns:
+            Tuple of (number of matches, match string)
+        """
         num_match = 0
         target_len = len(target)
         predicted_len = len(predicted)
@@ -484,7 +524,7 @@ class WorkerTest(object):
 
         i = 0
         j = 0
-        aa_match = []
+        aa_match: list[str] = []
         while i < target_len and j < predicted_len:
             if abs(target_mass_cum[i] - predicted_mass_cum[j]) < 0.5:
                 if abs(target_mass[i] - predicted_mass[j]) < 0.1:
@@ -499,13 +539,21 @@ class WorkerTest(object):
             else:
                 j += 1
                 aa_match.append('0')
-        aa_match = ' '.join(aa_match)
+        aa_match_str = ' '.join(aa_match)
 
-        return num_match, aa_match
+        return num_match, aa_match_str
 
-    def _peptide_to_ions(self, peptide):
-        """TODO(nh2tran): docstring."""
-
+    def _peptide_to_ions(self, peptide: list[str]) -> np.ndarray:
+        """Calculate theoretical fragment ion m/z values for a peptide.
+        
+        Generates b and y ions with neutral losses (H2O, NH3) for charges 1 and 2.
+        
+        Args:
+            peptide: List of amino acid strings
+        
+        Returns:
+            2D numpy array of ion m/z values, shape (len(peptide)-1, num_ion_types)
+        """
         peptide_mass = self._compute_peptide_mass(peptide)
         prefix_mass = config.mass_AA['_GO'] + np.cumsum([config.mass_AA[aa] for aa in peptide[:-1]])
         suffix_mass = peptide_mass - prefix_mass
@@ -515,14 +563,26 @@ class WorkerTest(object):
         by_neutral = np.concatenate([b_neutral, y_neutral], axis=1)
         by_charge1 = by_neutral + config.mass_H
         by_charge2 = (by_neutral + 2 * config.mass_H) / 2
-        by_ions = [by_charge1, by_charge2]
-        by_ions = np.concatenate(by_ions, axis=1)
+        by_ions = np.concatenate([by_charge1, by_charge2], axis=1)
 
         return by_ions
 
-    def _match_ion(self, target, predicted, spectrum):
-        """TODO(nh2tran): docstring."""
-
+    def _match_ion(
+        self,
+        target: list[str],
+        predicted: list[str],
+        spectrum: list[tuple[float, float]],
+    ) -> tuple[int, int, int, str]:
+        """Match fragment ions between target, predicted peptides and spectrum.
+        
+        Args:
+            target: Target peptide sequence
+            predicted: Predicted peptide sequence
+            spectrum: List of (m/z, intensity) tuples
+        
+        Returns:
+            Tuple of (target_ion_count, predicted_ion_count, matched_count, unmatched_list)
+        """
         target_by = self._peptide_to_ions(target).reshape(1, -1)
         predicted_by = self._peptide_to_ions(predicted).reshape(1, -1)
         mz_nby1 = np.array([x[0] for x in spectrum]).reshape(-1, 1)
@@ -530,9 +590,9 @@ class WorkerTest(object):
         predicted_ion = np.any(np.abs(mz_nby1 - predicted_by) <= 0.02, axis=1)
         matched_ion = target_ion * predicted_ion
         mz_nby1 = mz_nby1.flatten()
-        unmatched_ion_list = ';'.join(["{0:.5f}".format(x) for x in mz_nby1[np.flatnonzero(target_ion * (1 - predicted_ion))]])
-        target_ion = target_ion.sum()
-        predicted_ion = predicted_ion.sum()
-        matched_ion = matched_ion.sum()
+        unmatched_ion_list = ';'.join([f'{x:.5f}' for x in mz_nby1[np.flatnonzero(target_ion * (1 - predicted_ion))]])
+        target_ion_count = int(target_ion.sum())
+        predicted_ion_count = int(predicted_ion.sum())
+        matched_ion_count = int(matched_ion.sum())
 
-        return target_ion, predicted_ion, matched_ion, unmatched_ion_list
+        return target_ion_count, predicted_ion_count, matched_ion_count, unmatched_ion_list

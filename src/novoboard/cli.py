@@ -1,5 +1,7 @@
 """Command-line interface for NovoBoard."""
 
+from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -10,8 +12,12 @@ from novoboard.fdr import validate_FDR
 from novoboard.plotting import plot_fdr_validation
 
 
-def download_data(data_dir):
-    """Download data from Google Drive using gdown."""
+def download_data(data_dir: str) -> None:
+    """Download data from Google Drive using gdown.
+    
+    Args:
+        data_dir: Directory to download data into
+    """
     import gdown
     
     folder_url = "https://drive.google.com/drive/folders/1_6azR4-YjTUfRYdsXbFhZL9lFvjdrIDh"
@@ -24,51 +30,81 @@ def download_data(data_dir):
     print("Download complete.")
 
 
-def run_accuracy(data_dir, col_score, col_aa_score):
-    """Run accuracy calculation (Cell 2 equivalent)."""
-    folder = data_dir + '/'
-    target_file = folder + 'pd_merged.csv.db.psms.csv'
-    spectrum_file = folder + '2017-12-4_ABRF_200_DDA1.mgf'
+def run_accuracy(data_dir: str, col_score: str, col_aa_score: str) -> None:
+    """Run accuracy calculation (Cell 2 equivalent).
     
-    for x in range(10, 10+1):
-        predicted_file = folder + 'PEAKS/Sample {0:s}.denovo.csv'.format(str(x))
+    Args:
+        data_dir: Path to data directory
+        col_score: Column name for score values
+        col_aa_score: Column name for AA score values
+    """
+    folder = f"{data_dir}/"
+    target_file = f"{folder}pd_merged.csv.db.psms.csv"
+    spectrum_file = f"{folder}2017-12-4_ABRF_200_DDA1.mgf"
+    
+    for x in range(10, 10 + 1):
+        predicted_file = f"{folder}PEAKS/Sample {x}.denovo.csv"
         worker_test = WorkerTest(target_file, predicted_file, spectrum_file, col_score, col_aa_score)
         worker_test.test_accuracy()
 
 
-def run_decoy_generation(data_dir, peak_sampling='random', sampling_rate=0.5):
-    """Run decoy MGF generation (Cell 4 equivalent)."""
-    folder = data_dir + '/'
+def run_decoy_generation(
+    data_dir: str,
+    peak_sampling: str = 'random',
+    sampling_rate: float = 0.5,
+) -> None:
+    """Run decoy MGF generation (Cell 4 equivalent).
+    
+    Args:
+        data_dir: Path to data directory
+        peak_sampling: Peak sampling strategy
+        sampling_rate: Fraction of peaks to sample
+    """
+    folder = f"{data_dir}/"
     input_mgf_list = [
         '2017-12-4_ABRF_200_DDA1.mgf',
     ]
-    input_mgf_list = [folder + x for x in input_mgf_list]
+    input_mgf_list = [f"{folder}{x}" for x in input_mgf_list]
     
     generate_decoy_mgf(input_mgf_list, peak_sampling, sampling_rate)
 
 
-def run_fdr_validation(data_dir, output_dir, col_score, col_aa_score):
-    """Run FDR validation (Cell 8 equivalent)."""
-    folder = data_dir + '/'
-    db_csv = folder + 'pd_merged.csv.db.psms.csv'
-    spectrum_file = folder + '2017-12-4_ABRF_200_DDA1.mgf'
+def run_fdr_validation(
+    data_dir: str,
+    output_dir: str,
+    col_score: str,
+    col_aa_score: str,
+) -> None:
+    """Run FDR validation (Cell 8 equivalent).
+    
+    Args:
+        data_dir: Path to data directory
+        output_dir: Path for output files
+        col_score: Column name for score values
+        col_aa_score: Column name for AA score values
+    """
+    folder = f"{data_dir}/"
+    db_csv = f"{folder}pd_merged.csv.db.psms.csv"
+    spectrum_file = f"{folder}2017-12-4_ABRF_200_DDA1.mgf"
 
-    p_decoy = [x/1000. for x in range(0, 50, 1)]
+    p_decoy = [x / 1000. for x in range(0, 50, 1)]
     T_pct = 0.90
 
-    samples = range(3, 7+1)
-    target_csv = folder + 'PEAKS/Sample 10.denovo.csv'
-    decoy_csv_list = [folder + 'PEAKS/Sample {0:s}.denovo.csv'.format(str(x)) for x in samples]
+    samples = range(3, 7 + 1)
+    target_csv = f"{folder}PEAKS/Sample 10.denovo.csv"
+    decoy_csv_list = [f"{folder}PEAKS/Sample {x}.denovo.csv" for x in samples]
     engine_score = col_score
     
-    results_list = [validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_decoy, T_pct, col_score, col_aa_score) 
-                    for decoy_csv in decoy_csv_list]
+    results_list = [
+        validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_decoy, T_pct, col_score, col_aa_score) 
+        for decoy_csv in decoy_csv_list
+    ]
 
     output_path = os.path.join(output_dir, 'fig.decoy_fdr_valid_X_random_abrf_peaks.png')
     plot_fdr_validation(results_list, samples, output_path)
 
 
-def main():
+def main() -> None:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
         description='NovoBoard - Framework for evaluating de novo peptide sequencing',
@@ -132,28 +168,27 @@ Examples:
     
     # Run all steps sequentially (like the notebook)
     if not args.skip_accuracy:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("Step 1: Running accuracy calculation...")
-        print("="*80)
+        print("=" * 80)
         run_accuracy(args.data_dir, col_score, col_aa_score)
     
     if not args.skip_decoy:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("Step 2: Generating decoy MGF...")
-        print("="*80)
+        print("=" * 80)
         run_decoy_generation(args.data_dir)
     
     if not args.skip_fdr:
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("Step 3: Running FDR validation...")
-        print("="*80)
+        print("=" * 80)
         run_fdr_validation(args.data_dir, args.output_dir, col_score, col_aa_score)
     
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("NovoBoard analysis complete!")
-    print("="*80)
+    print("=" * 80)
 
 
 if __name__ == '__main__':
     main()
-
