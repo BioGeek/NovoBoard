@@ -5,8 +5,32 @@ from __future__ import annotations
 import logging
 import re
 import csv
+from dataclasses import dataclass, field
+
 import numpy as np
 from novoboard import config
+
+
+@dataclass
+class PredictedPeptide:
+    """A predicted peptide from de novo sequencing.
+    
+    Attributes:
+        feature_id: Unique identifier for the feature (source_file||scan)
+        sequence: List of predicted sequences (multiple predictions possible)
+        score: List of scores for each prediction
+        aa_score: List of amino acid scores for each prediction
+        feature_area: Peak area (intensity) of the feature
+        scan_list_middle: Middle scan of the feature
+        scan_list_original: Original scan list
+    """
+    feature_id: str
+    sequence: list[list[str]] = field(default_factory=list)
+    score: list[float] = field(default_factory=list)
+    aa_score: list[str] = field(default_factory=list)
+    feature_area: float = 0.0
+    scan_list_middle: str = ""
+    scan_list_original: str = ""
 
 logger = logging.getLogger(__name__)
 

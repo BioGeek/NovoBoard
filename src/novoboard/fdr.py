@@ -3,12 +3,38 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
 from novoboard.accuracy import WorkerTest
+
+
+@dataclass
+class FDRValidationResult:
+    """Results from FDR validation.
+    
+    Attributes:
+        denovo_df: DataFrame with de novo sequencing results and accuracy info
+        df: Filtered DataFrame with only annotated target spectra
+        estimated_fdr: Estimated FDR values
+        cumsum: Cumulative count of PSMs
+        true_fdr: True FDR based on peptide-level accuracy
+        true_fdr_I: True FDR based on ion-level accuracy (100% match)
+        true_fdr_T: True FDR based on ion-level accuracy (threshold match)
+        estimated_fdr_full: Estimated FDR on all target spectra
+        cumsum_full: Cumulative count on all target spectra
+    """
+    denovo_df: pd.DataFrame
+    df: pd.DataFrame
+    estimated_fdr: tuple[float, ...]
+    cumsum: tuple[int, ...]
+    true_fdr: tuple[float, ...]
+    true_fdr_I: tuple[float, ...]
+    true_fdr_T: tuple[float, ...]
+    estimated_fdr_full: tuple[float, ...]
+    cumsum_full: tuple[int, ...]
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +131,7 @@ def validate_FDR(
     T_pct: float,
     col_score: str,
     col_aa_score: str,
-) -> dict[str, Any]:
+) -> FDRValidationResult:
     """Validate FDR estimation against known database matches.
     
     Args:
@@ -199,14 +225,14 @@ def validate_FDR(
             reported_full.append((x, y))
     estimated_fdr_full, cumsum_full_out = zip(*reported_full)
     
-    return {
-        'denovo_df': denovo_df, 
-        'df': df, 
-        'estimated_fdr': estimated_fdr_out,
-        'cumsum': cumsum_out,
-        'true_fdr': true_fdr_out,
-        'true_fdr_I': true_fdr_I_out,
-        'true_fdr_T': true_fdr_T_out,
-        'estimated_fdr_full': estimated_fdr_full,
-        'cumsum_full': cumsum_full_out,
-    }
+    return FDRValidationResult(
+        denovo_df=denovo_df,
+        df=df,
+        estimated_fdr=estimated_fdr_out,
+        cumsum=cumsum_out,
+        true_fdr=true_fdr_out,
+        true_fdr_I=true_fdr_I_out,
+        true_fdr_T=true_fdr_T_out,
+        estimated_fdr_full=estimated_fdr_full,
+        cumsum_full=cumsum_full_out,
+    )
