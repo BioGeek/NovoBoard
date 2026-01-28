@@ -29,11 +29,13 @@ def generate_decoy_mgf(input_mgf_list, peak_sampling='random', sampling_rate=0.5
 
         # collect peak_distr and removed_peaks_distr for noise sampling
         if peak_sampling == 'random' or peak_sampling == 'permutation' or peak_sampling == 'distance':
-            peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in open(input_mgf, 'r') if line[0].isdigit()]
+            with open(input_mgf, 'r') as f:
+                peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in f if line[0].isdigit()]
             print("len(peaks_distr) =", len(peaks_distr))
             removed_peaks_distr = []
         elif peak_sampling == '500Da':
-            peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in open(input_mgf, 'r') if line[0].isdigit()]
+            with open(input_mgf, 'r') as f:
+                peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in f if line[0].isdigit()]
             print("len(peaks_distr) =", len(peaks_distr))
             removed_peaks_distr = [[x, y] for x, y in peaks_distr if x < 500]
             print("len(removed_peaks_distr) =", len(removed_peaks_distr))
