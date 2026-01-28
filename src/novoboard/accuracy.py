@@ -117,6 +117,174 @@ class WorkerTest:
         self.predicted_list: list[dict] = []
         self.spectrum_dict: dict[str, list[tuple[float, float]]] = {}
 
+    def _filter_targets_by_db(
+        self,
+        db_peptide_list: list[list[str]] | None,
+    ) -> dict[str, list[str]]:
+        """Filter targets to only include those in db_peptide_list.
+        
+        Args:
+            db_peptide_list: List of peptides to filter by, or None for all targets
+        
+        Returns:
+            Filtered dictionary of feature_id -> peptide sequence
+        """
+        if db_peptide_list is None:
+            return self.target_dict
+        
+        target_dict_db: dict[str, list[str]] = {}
+        for feature_id, target in self.target_dict.items():
+            # Remove extension 'mod' from variable modifications for comparison
+            target_simplified = target[:]
+            target_simplified = ['M' if x == 'M(Oxidation)' else x for x in target_simplified]
+            target_simplified = ['N' if x == 'N(Deamidation)' else x for x in target_simplified]
+            target_simplified = ['Q' if x == 'Q(Deamidation)' else x for x in target_simplified]
+            if target_simplified in db_peptide_list:
+                target_dict_db[feature_id] = target
+            else:
+                logger.warning(f"target not found: {target_simplified}")
+        return target_dict_db
+
+    def _filter_targets_by_mass(
+        self,
+        target_dict: dict[str, list[str]],
+    ) -> dict[str, list[str]]:
+        """Filter targets to only include those with precursor mass <= MZ_MAX.
+        
+        Args:
+            target_dict: Dictionary of feature_id -> peptide sequence
+        
+        Returns:
+            Filtered dictionary
+        """
+        return {
+            feature_id: peptide
+            for feature_id, peptide in target_dict.items()
+            if self._compute_peptide_mass(peptide) <= self.MZ_MAX
+        }
+
+    def _find_best_prediction(
+        self,
+        target: list[str],
+        predicted: dict,
+    ) -> tuple[int, str, list[str], float, str]:
+        """Find the best matching prediction from a list of predictions.
+        
+        Args:
+            target: Target peptide sequence
+            predicted: Dictionary with 'sequence', 'score', 'aa_score' lists
+        
+        Returns:
+            Tuple of (recall_AA, aa_match, best_sequence, best_score, best_aa_score)
+        """
+        best_recall_AA = -1
+        best_aa_match = ''
+        best_predicted_sequence = predicted["sequence"][0]
+        best_predicted_score = predicted["score"][0]
+        best_predicted_aa_score = predicted["aa_score"][0]
+        
+        for pred_seq, pred_score, pred_aa_score in zip(
+            predicted["sequence"], predicted["score"], predicted["aa_score"]
+        ):
+            predicted_AA_id = [config.vocab[x] for x in pred_seq]
+            target_AA_id = [config.vocab[x] for x in target]
+            recall_AA, aa_match = self._match_AA_novor(target_AA_id, predicted_AA_id)
+            
+            if (recall_AA > best_recall_AA
+                    or (recall_AA == best_recall_AA and pred_score > best_predicted_score)):
+                best_recall_AA = recall_AA
+                best_aa_match = aa_match
+                best_predicted_sequence = pred_seq[:]
+                best_predicted_score = pred_score
+                best_predicted_aa_score = pred_aa_score
+        
+        return (best_recall_AA, best_aa_match, best_predicted_sequence, 
+                best_predicted_score, best_predicted_aa_score)
+
+    def _write_scan_files(
+        self,
+        scan_dict: dict[str, dict],
+    ) -> None:
+        """Write scan2fea and multifea output files.
+        
+        Args:
+            scan_dict: Dictionary mapping scan_id -> {feature_count, feature_list}
+        """
+        # Build multifea_dict from scan_dict
+        multifea_dict: dict[str, list[str]] = {}
+        for scan_id, value in scan_dict.items():
+            feature_count = value["feature_count"]
+            feature_list = value["feature_list"]
+            if feature_count > 1:
+                for feature_id in feature_list:
+                    if feature_id in multifea_dict:
+                        multifea_dict[feature_id].append(f'{scan_id}:{feature_count}')
+                    else:
+                        multifea_dict[feature_id] = [f'{scan_id}:{feature_count}']
+
+        # Write scan2fea file
+        with open(self.scan2fea_file, 'w') as handle:
+            header_list = ["scan_id", "feature_count", "feature_list"]
+            print("\t".join(header_list), file=handle)
+            for scan_id, value in scan_dict.items():
+                print_list = [scan_id, str(value["feature_count"]), 
+                              ";".join(value["feature_list"])]
+                print("\t".join(print_list), file=handle)
+
+        # Write multifea file
+        with open(self.multifea_file, 'w') as handle:
+            header_list = ["feature_id", "scan_list"]
+            print("\t".join(header_list), file=handle)
+            for feature_id, scan_list in multifea_dict.items():
+                print("\t".join([feature_id, ";".join(scan_list)]), file=handle)
+
+    def _log_metrics(
+        self,
+        target_count_total: int,
+        target_len_total: int,
+        target_count_db: int,
+        target_len_db: int,
+        target_count_db_mass: int,
+        target_len_db_mass: int,
+        predicted_count_mass: int,
+        predicted_count_mass_db: int,
+        predicted_len_mass_db: int,
+        predicted_only: int,
+        recall_AA_total: float,
+        recall_peptide_total: float,
+        target_ion_total: float,
+        matched_ion_total: float,
+        predicted_ion_total: float,
+        recall_all_peptide_ions_total: float,
+    ) -> None:
+        """Log all accuracy metrics."""
+        logger.info(f"target_count_total = {target_count_total:d}")
+        logger.info(f"target_len_total = {target_len_total:d}")
+        logger.info(f"target_count_db = {target_count_db:d}")
+        logger.info(f"target_len_db = {target_len_db:d}")
+        logger.info(f"target_count_db_mass: {target_count_db_mass:d}")
+        logger.info(f"target_len_db_mass: {target_len_db_mass:d}")
+
+        logger.info(f"predicted_count_mass: {predicted_count_mass:d}")
+        logger.info(f"predicted_count_mass_db: {predicted_count_mass_db:d}")
+        logger.info(f"predicted_len_mass_db: {predicted_len_mass_db:d}")
+        logger.info(f"predicted_only: {predicted_only:d}")
+
+        logger.info(f"recall_AA_total = {recall_AA_total / target_len_total:.4f}")
+        logger.info(f"recall_AA_db = {recall_AA_total / target_len_db:.4f}")
+        logger.info(f"recall_AA_db_mass = {recall_AA_total / target_len_db_mass:.4f}")
+        logger.info(f"recall_peptide_total = {recall_peptide_total / target_count_total:.4f}")
+        logger.info(f"recall_peptide_db = {recall_peptide_total / target_count_db:.4f}")
+        logger.info(f"recall_peptide_db_mass = {recall_peptide_total / target_count_db_mass:.4f}")
+        logger.info(f"precision_AA_mass_db  = {recall_AA_total / predicted_len_mass_db:.4f}")
+        logger.info(f"precision_peptide_mass_db  = {recall_peptide_total / predicted_count_mass_db:.4f}")
+
+        logger.info(f"recall_ion = {matched_ion_total / target_ion_total:.4f}")
+        logger.info(f"precision_ion = {matched_ion_total / predicted_ion_total:.4f}")
+        logger.info(f"recall_all_peptide_ions = {recall_all_peptide_ions_total / target_count_db_mass:.4f}")
+        logger.info(f"target_ion_total = {target_ion_total}")
+        logger.info(f"matched_ion_total = {matched_ion_total}")
+
     def test_accuracy(self, db_peptide_list: list[list[str]] | None = None) -> None:
         """Calculate accuracy metrics between predicted and target peptides.
         
@@ -162,33 +330,13 @@ class WorkerTest:
         target_count_total = len(self.target_dict)
         target_len_total = sum(len(x) for x in self.target_dict.values())
 
-        # this part is tricky!
-        # some target peptides are reported by PEAKS DB but not found in
-        #   db_peptide_list due to mistakes in cleavage rules.
-        # if db_peptide_list is given, we only consider those target peptides,
-        #   otherwise, use all target peptides
-        target_dict_db: dict[str, list[str]] = {}
-        if db_peptide_list is not None:
-            for feature_id, target in self.target_dict.items():
-                target_simplied = target
-                # remove the extension 'mod' from variable modifications
-                target_simplied = ['M' if x == 'M(Oxidation)' else x for x in target_simplied]
-                target_simplied = ['N' if x == 'N(Deamidation)' else x for x in target_simplied]
-                target_simplied = ['Q' if x == 'Q(Deamidation)' else x for x in target_simplied]
-                if target_simplied in db_peptide_list:
-                    target_dict_db[feature_id] = target
-                else:
-                    logger.warning(f"target not found: {target_simplied}")
-        else:
-            target_dict_db = self.target_dict
+        # Filter targets by db_peptide_list (if provided)
+        target_dict_db = self._filter_targets_by_db(db_peptide_list)
         target_count_db = len(target_dict_db)
         target_len_db = sum(len(x) for x in target_dict_db.values())
 
-        # we also skip target peptides with precursor_mass > MZ_MAX
-        target_dict_db_mass: dict[str, list[str]] = {}
-        for feature_id, peptide in target_dict_db.items():
-            if self._compute_peptide_mass(peptide) <= self.MZ_MAX:
-                target_dict_db_mass[feature_id] = peptide
+        # Filter targets by precursor mass
+        target_dict_db_mass = self._filter_targets_by_mass(target_dict_db)
         target_count_db_mass = len(target_dict_db_mass)
         target_len_db_mass = sum(len(x) for x in target_dict_db_mass.values())
 
@@ -245,28 +393,9 @@ class WorkerTest:
                 target = target_dict_db_mass[feature_id]
                 target_len = len(target)
 
-                # if >= 1 denovo peptides reported, calculate the best accuracy
-                best_recall_AA = -1
-                best_aa_match = ''
-                best_predicted_sequence = predicted["sequence"][0]
-                best_predicted_score = predicted["score"][0]
-                best_predicted_aa_score = predicted["aa_score"][0]
-                for predicted_sequence, predicted_score, predicted_aa_score in zip(predicted["sequence"], predicted["score"], predicted["aa_score"]):
-                    predicted_AA_id = [config.vocab[x] for x in predicted_sequence]
-                    target_AA_id = [config.vocab[x] for x in target]
-                    recall_AA, aa_match = self._match_AA_novor(target_AA_id, predicted_AA_id)
-                    if (recall_AA > best_recall_AA
-                            or (recall_AA == best_recall_AA and predicted_score > best_predicted_score)):
-                        best_recall_AA = recall_AA
-                        best_aa_match = aa_match
-                        best_predicted_sequence = predicted_sequence[:]
-                        best_predicted_score = predicted_score
-                        best_predicted_aa_score = predicted_aa_score
-                recall_AA = best_recall_AA
-                aa_match = best_aa_match
-                predicted_sequence = best_predicted_sequence[:]
-                predicted_score = best_predicted_score
-                predicted_aa_score = best_predicted_aa_score
+                # Find the best matching prediction
+                recall_AA, aa_match, predicted_sequence, predicted_score, predicted_aa_score = \
+                    self._find_best_prediction(target, predicted)
 
                 recall_AA_total += recall_AA
                 if recall_AA == target_len:
@@ -331,67 +460,28 @@ class WorkerTest:
         accuracy_handle.close()
         denovo_only_handle.close()
 
-        multifea_dict: dict[str, list[str]] = {}
-        for scan_id, value in scan_dict.items():
-            feature_count = value["feature_count"]
-            feature_list = value["feature_list"]
-            if feature_count > 1:
-                for feature_id in feature_list:
-                    if feature_id in multifea_dict:
-                        multifea_dict[feature_id].append(f'{scan_id}:{feature_count}')
-                    else:
-                        multifea_dict[feature_id] = [f'{scan_id}:{feature_count}']
+        # Write scan mapping files
+        self._write_scan_files(scan_dict)
 
-        with open(self.scan2fea_file, 'w') as handle:
-            header_list = ["scan_id",
-                           "feature_count",
-                           "feature_list"]
-            header_row = "\t".join(header_list)
-            print(header_row, file=handle, end="\n")
-            for scan_id, value in scan_dict.items():
-                print_list = [scan_id,
-                              str(value["feature_count"]),
-                              ";".join(value["feature_list"])]
-                print_row = "\t".join(print_list)
-                print(print_row, file=handle, end="\n")
-
-        with open(self.multifea_file, 'w') as handle:
-            header_list = ["feature_id",
-                           "scan_list"]
-            header_row = "\t".join(header_list)
-            print(header_row, file=handle, end="\n")
-            for feature_id, scan_list in multifea_dict.items():
-                print_list = [feature_id,
-                              ";".join(scan_list)]
-                print_row = "\t".join(print_list)
-                print(print_row, file=handle, end="\n")
-
-        logger.info(f"target_count_total = {target_count_total:d}")
-        logger.info(f"target_len_total = {target_len_total:d}")
-        logger.info(f"target_count_db = {target_count_db:d}")
-        logger.info(f"target_len_db = {target_len_db:d}")
-        logger.info(f"target_count_db_mass: {target_count_db_mass:d}")
-        logger.info(f"target_len_db_mass: {target_len_db_mass:d}")
-
-        logger.info(f"predicted_count_mass: {predicted_count_mass:d}")
-        logger.info(f"predicted_count_mass_db: {predicted_count_mass_db:d}")
-        logger.info(f"predicted_len_mass_db: {predicted_len_mass_db:d}")
-        logger.info(f"predicted_only: {predicted_only:d}")
-
-        logger.info(f"recall_AA_total = {recall_AA_total / target_len_total:.4f}")
-        logger.info(f"recall_AA_db = {recall_AA_total / target_len_db:.4f}")
-        logger.info(f"recall_AA_db_mass = {recall_AA_total / target_len_db_mass:.4f}")
-        logger.info(f"recall_peptide_total = {recall_peptide_total / target_count_total:.4f}")
-        logger.info(f"recall_peptide_db = {recall_peptide_total / target_count_db:.4f}")
-        logger.info(f"recall_peptide_db_mass = {recall_peptide_total / target_count_db_mass:.4f}")
-        logger.info(f"precision_AA_mass_db  = {recall_AA_total / predicted_len_mass_db:.4f}")
-        logger.info(f"precision_peptide_mass_db  = {recall_peptide_total / predicted_count_mass_db:.4f}")
-
-        logger.info(f"recall_ion = {matched_ion_total / target_ion_total:.4f}")
-        logger.info(f"precision_ion = {matched_ion_total / predicted_ion_total:.4f}")
-        logger.info(f"recall_all_peptide_ions = {recall_all_peptide_ions_total / target_count_db_mass:.4f}")
-        logger.info(f"target_ion_total = {target_ion_total}")
-        logger.info(f"matched_ion_total = {matched_ion_total}")
+        # Log accuracy metrics
+        self._log_metrics(
+            target_count_total=target_count_total,
+            target_len_total=target_len_total,
+            target_count_db=target_count_db,
+            target_len_db=target_len_db,
+            target_count_db_mass=target_count_db_mass,
+            target_len_db_mass=target_len_db_mass,
+            predicted_count_mass=predicted_count_mass,
+            predicted_count_mass_db=predicted_count_mass_db,
+            predicted_len_mass_db=predicted_len_mass_db,
+            predicted_only=predicted_only,
+            recall_AA_total=recall_AA_total,
+            recall_peptide_total=recall_peptide_total,
+            target_ion_total=target_ion_total,
+            matched_ion_total=matched_ion_total,
+            predicted_ion_total=predicted_ion_total,
+            recall_all_peptide_ions_total=recall_all_peptide_ions_total,
+        )
 
     def _compute_peptide_mass(self, peptide: list[str]) -> float:
         """Compute the monoisotopic mass of a peptide.
