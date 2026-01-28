@@ -111,8 +111,6 @@ def _apply_sampling_strategy(
     num_peaks = len(peak_list)
     num_sampling = int(num_peaks * sampling_rate)
     num_noise = num_peaks - num_sampling
-    random.seed(99)
-    np.random.seed(99)
     
     sampling_peaks: list = []
     noise_peaks: list = []
@@ -164,6 +162,7 @@ def generate_decoy_mgf(
     input_mgf_list: list[str],
     peak_sampling: str = 'random',
     sampling_rate: float = config.DEFAULT_SAMPLING_RATE,
+    seed: int = 99,
 ) -> None:
     """Generate decoy MGF files with specified peak sampling strategy.
     
@@ -180,9 +179,15 @@ def generate_decoy_mgf(
             - '500Da': Remove peaks under 500 Da
             - 'distance': Remove peaks matching AA mass differences
         sampling_rate: Fraction of peaks to keep (0.0-1.0)
+        seed: Random seed for reproducibility (default: 99)
     """
+    # Set random seeds at function entry point for reproducibility
+    random.seed(seed)
+    np.random.seed(seed)
+    
     logger.info(f"peak_sampling = {peak_sampling}")
     logger.info(f"sampling_rate = {sampling_rate}")
+    logger.info(f"seed = {seed}")
     
     for input_mgf in input_mgf_list:
 
