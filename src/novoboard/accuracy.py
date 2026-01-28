@@ -10,6 +10,12 @@ from dataclasses import dataclass, field
 import numpy as np
 from novoboard import config
 
+# Precompiled regex patterns for performance
+_SCAN_SPLIT_PATTERN = re.compile(r';|\r|\n')
+_CSV_SPLIT_PATTERN = re.compile(r',|\r|\n')
+_MGF_FIELD_PATTERN = re.compile(r'[=\r\n]')
+_PEAK_SPLIT_PATTERN = re.compile(r' |\t|\r|\n')
+
 
 @dataclass
 class PredictedPeptide:
@@ -247,20 +253,19 @@ class WorkerTest:
                         multifea_dict[feature_id] = [f'{scan_id}:{feature_count}']
 
         # Write scan2fea file
-        with open(self.scan2fea_file, 'w') as handle:
-            header_list = ["scan_id", "feature_count", "feature_list"]
-            print("\t".join(header_list), file=handle)
+        with open(self.scan2fea_file, 'w', newline='') as handle:
+            writer = csv.writer(handle, delimiter='\t')
+            writer.writerow(["scan_id", "feature_count", "feature_list"])
             for scan_id, value in scan_dict.items():
-                print_list = [scan_id, str(value["feature_count"]), 
-                              ";".join(value["feature_list"])]
-                print("\t".join(print_list), file=handle)
+                writer.writerow([scan_id, value["feature_count"], 
+                                 ";".join(value["feature_list"])])
 
         # Write multifea file
-        with open(self.multifea_file, 'w') as handle:
-            header_list = ["feature_id", "scan_list"]
-            print("\t".join(header_list), file=handle)
+        with open(self.multifea_file, 'w', newline='') as handle:
+            writer = csv.writer(handle, delimiter='\t')
+            writer.writerow(["feature_id", "scan_list"])
             for feature_id, scan_list in multifea_dict.items():
-                print("\t".join([feature_id, ";".join(scan_list)]), file=handle)
+                writer.writerow([feature_id, ";".join(scan_list)])
 
     def _log_metrics(
         self,
@@ -401,7 +406,7 @@ class WorkerTest:
             feature_scan_list_middle = predicted["scan_list_middle"]
             feature_scan_list_original = predicted["scan_list_original"]
             if feature_scan_list_original:
-                for scan in re.split(r';|\r|\n', feature_scan_list_original):
+                for scan in _SCAN_SPLIT_PATTERN.split(feature_scan_list_original):
                     if scan in scan_dict:
                         scan_dict[scan]["feature_count"] += 1
                         scan_dict[scan]["feature_list"].append(feature_id)
@@ -567,7 +572,7 @@ class WorkerTest:
             scan_index = header.index(col_scan_list)
 
             for line in handle:
-                line_parts = [x.strip('"') for x in re.split(r',|\r|\n', line)]
+                line_parts = [x.strip('"') for x in _CSV_SPLIT_PATTERN.split(line)]
                 feature_id = line_parts[source_file_index] + "||" + line_parts[scan_index]
                 raw_sequence = line_parts[raw_sequence_index]
                 assert raw_sequence, "Error: wrong target format."
@@ -595,13 +600,13 @@ class WorkerTest:
                     # parse header lines
                     if 'BEGIN IONS' in line or '=' in line:
                         if "TITLE=" in line:
-                            source_file = re.split(r'[=\r\n]', line)[1].split('\\')[-1].split('.raw')[0] + '.mgf'
+                            source_file = _MGF_FIELD_PATTERN.split(line)[1].split('\\')[-1].split('.raw')[0] + '.mgf'
                         if line[:6] == "SCANS=":
-                            scan = re.split(r'[=\r\n]', line)[1]
+                            scan = _MGF_FIELD_PATTERN.split(line)[1]
                         line = f_in.readline()
                         continue
                     # parse ions
-                    mz, intensity = re.split(r' |\t|\r|\n', line)[:2]
+                    mz, intensity = _PEAK_SPLIT_PATTERN.split(line)[:2]
                     peak_list.append((float(mz), float(intensity)))
                     line = f_in.readline()
                 feature_id = f'{source_file}||{scan}'
