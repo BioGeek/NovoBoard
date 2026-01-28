@@ -523,8 +523,8 @@ class WorkerTest:
         j = 0
         aa_match: list[str] = []
         while i < target_len and j < predicted_len:
-            if abs(target_mass_cum[i] - predicted_mass_cum[j]) < 0.5:
-                if abs(target_mass[i] - predicted_mass[j]) < 0.1:
+            if abs(target_mass_cum[i] - predicted_mass_cum[j]) < config.MASS_TOLERANCE_CUMULATIVE:
+                if abs(target_mass[i] - predicted_mass[j]) < config.MASS_TOLERANCE_AA:
                     num_match += 1
                     aa_match.append('1')
                 else:
@@ -583,8 +583,8 @@ class WorkerTest:
         target_by = self._peptide_to_ions(target).reshape(1, -1)
         predicted_by = self._peptide_to_ions(predicted).reshape(1, -1)
         mz_nby1 = np.array([x[0] for x in spectrum]).reshape(-1, 1)
-        target_ion = np.any(np.abs(mz_nby1 - target_by) <= 0.02, axis=1)
-        predicted_ion = np.any(np.abs(mz_nby1 - predicted_by) <= 0.02, axis=1)
+        target_ion = np.any(np.abs(mz_nby1 - target_by) <= config.ION_TOLERANCE, axis=1)
+        predicted_ion = np.any(np.abs(mz_nby1 - predicted_by) <= config.ION_TOLERANCE, axis=1)
         matched_ion = target_ion * predicted_ion
         mz_nby1 = mz_nby1.flatten()
         unmatched_ion_list = ';'.join([f'{x:.5f}' for x in mz_nby1[np.flatnonzero(target_ion * (1 - predicted_ion))]])

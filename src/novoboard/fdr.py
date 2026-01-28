@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os.path
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -132,10 +132,11 @@ def validate_FDR(
 
     dfs, dfs_fdr, score_list, count_list = calculate_FDR(target_csv, decoy_csv, engine_score, p_decoy, selected_features)
 
-    target_decoy_csv = f"{target_csv}-{decoy_csv.split('/')[-1]}"
+    decoy_name = Path(decoy_csv).name
+    target_decoy_csv = f"{target_csv}-{decoy_name}"
     dfs_fdr.to_csv(target_decoy_csv, index=False)
     accuracy_file = f"{target_decoy_csv}.accuracy"
-    if not os.path.isfile(accuracy_file):
+    if not Path(accuracy_file).is_file():
         worker_test = WorkerTest(db_csv, target_decoy_csv, spectrum_file, col_score, col_aa_score)
         worker_test.test_accuracy()
 

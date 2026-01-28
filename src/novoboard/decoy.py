@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def generate_decoy_mgf(
     input_mgf_list: list[str],
     peak_sampling: str = 'random',
-    sampling_rate: float = 0.5,
+    sampling_rate: float = config.DEFAULT_SAMPLING_RATE,
 ) -> None:
     """Generate decoy MGF files with specified peak sampling strategy.
     
@@ -88,7 +88,7 @@ def generate_decoy_mgf(
                     if peak_sampling == 'intensity':
                         num_sampling = int(num_peaks * sampling_rate)
                     elif peak_sampling == 'intensity_mass':
-                        est_len = int(peptide_mass / 122.8652943)
+                        est_len = int(peptide_mass / config.AVG_AA_MASS)
                         num_noise = int(min((est_len - 1) * 2, num_peaks) * (1 - sampling_rate))
                         num_sampling = num_peaks - num_noise
                     peak_list_sorted = sorted(peak_list, key=lambda x: x[1])
@@ -150,7 +150,7 @@ def generate_decoy_mgf(
                         noise_peaks = random.sample(removed_peaks_distr, num_noise)
                     # peak removal and noise sampling by intensity and peptide mass
                     elif peak_sampling == 'intensity_mass':
-                        est_len = int(peptide_mass / 122.8652943)
+                        est_len = int(peptide_mass / config.AVG_AA_MASS)
                         num_noise = int(min((est_len - 1) * 2, num_peaks) * (1 - sampling_rate))
                         num_sampling = num_peaks - num_noise
                         peak_list_sorted = sorted(peak_list, key=lambda x: x[1])
@@ -175,7 +175,7 @@ def generate_decoy_mgf(
                         pair_distance = np.absolute(np.reshape(mz_array, (num_peaks, 1)) - np.reshape(mz_array, (1, num_peaks)))
                         aa_masses = config.mass_ID_np[3:].reshape(1, -1)
                         pair_aa_match = np.absolute(np.expand_dims(pair_distance, axis=2) - aa_masses)
-                        pair_aa_match = np.any(pair_aa_match <= 0.02, axis=2)
+                        pair_aa_match = np.any(pair_aa_match <= config.ION_TOLERANCE, axis=2)
                         match_peak_indices = list(np.flatnonzero(np.any(pair_aa_match, axis=1)))
                         num_noise = int(len(match_peak_indices) * (1 - sampling_rate))
                         removed_indices = random.sample(match_peak_indices, num_noise)

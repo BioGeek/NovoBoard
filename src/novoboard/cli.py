@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
+from pathlib import Path
 import sys
 
+from novoboard import config
 from novoboard.accuracy import WorkerTest
 from novoboard.decoy import generate_decoy_mgf
 from novoboard.fdr import validate_FDR
@@ -15,7 +16,7 @@ from novoboard.plotting import plot_fdr_validation
 logger = logging.getLogger(__name__)
 
 
-def download_data(data_dir: str) -> None:
+def download_data(data_dir: Path) -> None:
     """Download data from Google Drive using gdown.
     
     Args:
@@ -25,15 +26,14 @@ def download_data(data_dir: str) -> None:
     
     folder_url = "https://drive.google.com/drive/folders/1_6azR4-YjTUfRYdsXbFhZL9lFvjdrIDh"
     
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"Downloading data to {data_dir}...")
-    gdown.download_folder(folder_url, output=data_dir, quiet=False)
+    gdown.download_folder(folder_url, output=str(data_dir), quiet=False)
     logger.info("Download complete.")
 
 
-def run_accuracy(data_dir: str, col_score: str, col_aa_score: str) -> None:
+def run_accuracy(data_dir: Path, col_score: str, col_aa_score: str) -> None:
     """Run accuracy calculation (Cell 2 equivalent).
     
     Args:
@@ -41,20 +41,25 @@ def run_accuracy(data_dir: str, col_score: str, col_aa_score: str) -> None:
         col_score: Column name for score values
         col_aa_score: Column name for AA score values
     """
-    folder = f"{data_dir}/"
-    target_file = f"{folder}pd_merged.csv.db.psms.csv"
-    spectrum_file = f"{folder}2017-12-4_ABRF_200_DDA1.mgf"
+    target_file = data_dir / 'pd_merged.csv.db.psms.csv'
+    spectrum_file = data_dir / '2017-12-4_ABRF_200_DDA1.mgf'
     
     for x in range(10, 10 + 1):
-        predicted_file = f"{folder}PEAKS/Sample {x}.denovo.csv"
-        worker_test = WorkerTest(target_file, predicted_file, spectrum_file, col_score, col_aa_score)
+        predicted_file = data_dir / 'PEAKS' / f'Sample {x}.denovo.csv'
+        worker_test = WorkerTest(
+            str(target_file),
+            str(predicted_file),
+            str(spectrum_file),
+            col_score,
+            col_aa_score,
+        )
         worker_test.test_accuracy()
 
 
 def run_decoy_generation(
-    data_dir: str,
+    data_dir: Path,
     peak_sampling: str = 'random',
-    sampling_rate: float = 0.5,
+    sampling_rate: float = config.DEFAULT_SAMPLING_RATE,
 ) -> None:
     """Run decoy MGF generation (Cell 4 equivalent).
     
@@ -63,18 +68,18 @@ def run_decoy_generation(
         peak_sampling: Peak sampling strategy
         sampling_rate: Fraction of peaks to sample
     """
-    folder = f"{data_dir}/"
     input_mgf_list = [
-        '2017-12-4_ABRF_200_DDA1.mgf',
+        data_dir / '2017-12-4_ABRF_200_DDA1.mgf',
     ]
-    input_mgf_list = [f"{folder}{x}" for x in input_mgf_list]
+    # Convert to strings for generate_decoy_mgf
+    input_mgf_str_list = [str(p) for p in input_mgf_list]
     
-    generate_decoy_mgf(input_mgf_list, peak_sampling, sampling_rate)
+    generate_decoy_mgf(input_mgf_str_list, peak_sampling, sampling_rate)
 
 
 def run_fdr_validation(
-    data_dir: str,
-    output_dir: str,
+    data_dir: Path,
+    output_dir: Path,
     col_score: str,
     col_aa_score: str,
 ) -> None:
@@ -86,25 +91,34 @@ def run_fdr_validation(
         col_score: Column name for score values
         col_aa_score: Column name for AA score values
     """
-    folder = f"{data_dir}/"
-    db_csv = f"{folder}pd_merged.csv.db.psms.csv"
-    spectrum_file = f"{folder}2017-12-4_ABRF_200_DDA1.mgf"
+    db_csv = data_dir / 'pd_merged.csv.db.psms.csv'
+    spectrum_file = data_dir / '2017-12-4_ABRF_200_DDA1.mgf'
 
     p_decoy = [x / 1000. for x in range(0, 50, 1)]
     T_pct = 0.90
 
     samples = range(3, 7 + 1)
-    target_csv = f"{folder}PEAKS/Sample 10.denovo.csv"
-    decoy_csv_list = [f"{folder}PEAKS/Sample {x}.denovo.csv" for x in samples]
+    target_csv = data_dir / 'PEAKS' / 'Sample 10.denovo.csv'
+    decoy_csv_list = [data_dir / 'PEAKS' / f'Sample {x}.denovo.csv' for x in samples]
     engine_score = col_score
     
     results_list = [
-        validate_FDR(target_csv, decoy_csv, engine_score, db_csv, spectrum_file, p_decoy, T_pct, col_score, col_aa_score) 
+        validate_FDR(
+            str(target_csv),
+            str(decoy_csv),
+            engine_score,
+            str(db_csv),
+            str(spectrum_file),
+            p_decoy,
+            T_pct,
+            col_score,
+            col_aa_score,
+        ) 
         for decoy_csv in decoy_csv_list
     ]
 
-    output_path = os.path.join(output_dir, 'fig.decoy_fdr_valid_X_random_abrf_peaks.png')
-    plot_fdr_validation(results_list, samples, output_path)
+    output_path = output_dir / 'fig.decoy_fdr_valid_X_random_abrf_peaks.png'
+    plot_fdr_validation(results_list, samples, str(output_path))
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -134,12 +148,14 @@ Examples:
     )
     parser.add_argument(
         '--data-dir', 
-        default='data',
+        type=Path,
+        default=Path('data'),
         help='Path to data directory (default: data/)'
     )
     parser.add_argument(
         '--output-dir', 
-        default='fig',
+        type=Path,
+        default=Path('fig'),
         help='Path for output files/plots (default: fig/)'
     )
     parser.add_argument(
@@ -182,14 +198,13 @@ Examples:
         download_data(args.data_dir)
     
     # Check if data directory exists
-    if not os.path.exists(args.data_dir):
+    if not args.data_dir.exists():
         print(f"Error: Data directory '{args.data_dir}' does not exist.")
         print("Use --download to download the data first, or specify a valid --data-dir.")
         sys.exit(1)
     
     # Create output directory if needed
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
     
     # Run all steps sequentially (like the notebook)
     if not args.skip_accuracy:
