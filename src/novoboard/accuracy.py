@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import csv
 import numpy as np
 from novoboard import config
 
+logger = logging.getLogger(__name__)
 
 col_precursor_mz = "m/z"
 col_precursor_charge = "z"
@@ -89,8 +91,8 @@ class WorkerTest:
             col_score: Column name for peptide score
             col_aa_score: Column name for amino acid scores
         """
-        print("=" * 80)
-        print("WorkerTest.__init__()")
+        logger.info("=" * 80)
+        logger.info("WorkerTest.__init__()")
 
         self.MZ_MAX: float = config.MZ_MAX
 
@@ -103,13 +105,13 @@ class WorkerTest:
         self.multifea_file = f"{predicted_file}.multifea"
         self.col_score = col_score
         self.col_aa_score = col_aa_score
-        print(f"target_file = {self.target_file}")
-        print(f"predicted_file = {self.predicted_file}")
-        print(f"spectrum_file = {self.spectrum_file}")
-        print(f"accuracy_file = {self.accuracy_file}")
-        print(f"denovo_only_file = {self.denovo_only_file}")
-        print(f"scan2fea_file = {self.scan2fea_file}")
-        print(f"multifea_file = {self.multifea_file}")
+        logger.info(f"target_file = {self.target_file}")
+        logger.info(f"predicted_file = {self.predicted_file}")
+        logger.info(f"spectrum_file = {self.spectrum_file}")
+        logger.info(f"accuracy_file = {self.accuracy_file}")
+        logger.info(f"denovo_only_file = {self.denovo_only_file}")
+        logger.info(f"scan2fea_file = {self.scan2fea_file}")
+        logger.info(f"multifea_file = {self.multifea_file}")
 
         self.target_dict: dict[str, list[str]] = {}
         self.predicted_list: list[dict] = []
@@ -121,8 +123,8 @@ class WorkerTest:
         Args:
             db_peptide_list: Optional list of peptides to filter targets
         """
-        print("=" * 80)
-        print("WorkerTest.test_accuracy()")
+        logger.info("=" * 80)
+        logger.info("WorkerTest.test_accuracy()")
 
         # write the accuracy of predicted peptides
         accuracy_handle = open(self.accuracy_file, 'w')
@@ -176,7 +178,7 @@ class WorkerTest:
                 if target_simplied in db_peptide_list:
                     target_dict_db[feature_id] = target
                 else:
-                    print(f"target not found: {target_simplied}")
+                    logger.warning(f"target not found: {target_simplied}")
         else:
             target_dict_db = self.target_dict
         target_count_db = len(target_dict_db)
@@ -364,36 +366,32 @@ class WorkerTest:
                 print_row = "\t".join(print_list)
                 print(print_row, file=handle, end="\n")
 
-        print(f"target_count_total = {target_count_total:d}")
-        print(f"target_len_total = {target_len_total:d}")
-        print(f"target_count_db = {target_count_db:d}")
-        print(f"target_len_db = {target_len_db:d}")
-        print(f"target_count_db_mass: {target_count_db_mass:d}")
-        print(f"target_len_db_mass: {target_len_db_mass:d}")
-        print()
+        logger.info(f"target_count_total = {target_count_total:d}")
+        logger.info(f"target_len_total = {target_len_total:d}")
+        logger.info(f"target_count_db = {target_count_db:d}")
+        logger.info(f"target_len_db = {target_len_db:d}")
+        logger.info(f"target_count_db_mass: {target_count_db_mass:d}")
+        logger.info(f"target_len_db_mass: {target_len_db_mass:d}")
 
-        print(f"predicted_count_mass: {predicted_count_mass:d}")
-        print(f"predicted_count_mass_db: {predicted_count_mass_db:d}")
-        print(f"predicted_len_mass_db: {predicted_len_mass_db:d}")
-        print(f"predicted_only: {predicted_only:d}")
-        print()
+        logger.info(f"predicted_count_mass: {predicted_count_mass:d}")
+        logger.info(f"predicted_count_mass_db: {predicted_count_mass_db:d}")
+        logger.info(f"predicted_len_mass_db: {predicted_len_mass_db:d}")
+        logger.info(f"predicted_only: {predicted_only:d}")
 
-        print(f"recall_AA_total = {recall_AA_total / target_len_total:.4f}")
-        print(f"recall_AA_db = {recall_AA_total / target_len_db:.4f}")
-        print(f"recall_AA_db_mass = {recall_AA_total / target_len_db_mass:.4f}")
-        print(f"recall_peptide_total = {recall_peptide_total / target_count_total:.4f}")
-        print(f"recall_peptide_db = {recall_peptide_total / target_count_db:.4f}")
-        print(f"recall_peptide_db_mass = {recall_peptide_total / target_count_db_mass:.4f}")
-        print(f"precision_AA_mass_db  = {recall_AA_total / predicted_len_mass_db:.4f}")
-        print(f"precision_peptide_mass_db  = {recall_peptide_total / predicted_count_mass_db:.4f}")
-        print()
+        logger.info(f"recall_AA_total = {recall_AA_total / target_len_total:.4f}")
+        logger.info(f"recall_AA_db = {recall_AA_total / target_len_db:.4f}")
+        logger.info(f"recall_AA_db_mass = {recall_AA_total / target_len_db_mass:.4f}")
+        logger.info(f"recall_peptide_total = {recall_peptide_total / target_count_total:.4f}")
+        logger.info(f"recall_peptide_db = {recall_peptide_total / target_count_db:.4f}")
+        logger.info(f"recall_peptide_db_mass = {recall_peptide_total / target_count_db_mass:.4f}")
+        logger.info(f"precision_AA_mass_db  = {recall_AA_total / predicted_len_mass_db:.4f}")
+        logger.info(f"precision_peptide_mass_db  = {recall_peptide_total / predicted_count_mass_db:.4f}")
 
-        print(f"recall_ion = {matched_ion_total / target_ion_total:.4f}")
-        print(f"precision_ion = {matched_ion_total / predicted_ion_total:.4f}")
-        print(f"recall_all_peptide_ions = {recall_all_peptide_ions_total / target_count_db_mass:.4f}")
-        print(f"target_ion_total = {target_ion_total}")
-        print(f"matched_ion_total = {matched_ion_total}")
-        print()
+        logger.info(f"recall_ion = {matched_ion_total / target_ion_total:.4f}")
+        logger.info(f"precision_ion = {matched_ion_total / predicted_ion_total:.4f}")
+        logger.info(f"recall_all_peptide_ions = {recall_all_peptide_ions_total / target_count_db_mass:.4f}")
+        logger.info(f"target_ion_total = {target_ion_total}")
+        logger.info(f"matched_ion_total = {matched_ion_total}")
 
     def _compute_peptide_mass(self, peptide: list[str]) -> float:
         """Compute the monoisotopic mass of a peptide.
@@ -412,8 +410,8 @@ class WorkerTest:
 
     def _get_predicted_peaks_11(self) -> None:
         """Read predicted peptides from PEAKS output CSV file."""
-        print("=" * 80)
-        print("WorkerTest._get_predicted_peaks_11()")
+        logger.info("=" * 80)
+        logger.info("WorkerTest._get_predicted_peaks_11()")
 
         predicted_list: list[dict] = []
         with open(self.predicted_file, 'r') as handle:
@@ -442,14 +440,14 @@ class WorkerTest:
 
     def _get_target(self) -> None:
         """Read target peptides from database search CSV file."""
-        print("=" * 80)
-        print("WorkerTest._get_target()")
+        logger.info("=" * 80)
+        logger.info("WorkerTest._get_target()")
 
         target_dict: dict[str, list[str]] = {}
         with open(self.target_file, 'r') as handle:
             header_line = handle.readline()
             header = [x.strip('"') for x in header_line.strip().split(',')]
-            print(header)
+            logger.debug(f"Header: {header}")
             raw_sequence_index = header.index(col_raw_sequence)
             source_file_index = header.index(col_source_file)
             scan_index = header.index(col_scan_list)
@@ -468,8 +466,8 @@ class WorkerTest:
 
     def _get_spectra(self) -> None:
         """Read spectra from MGF file."""
-        print("=" * 80)
-        print("WorkerTest._get_spectra()")
+        logger.info("=" * 80)
+        logger.info("WorkerTest._get_spectra()")
 
         with open(self.spectrum_file, 'r') as f_in:
             while True:
@@ -494,8 +492,7 @@ class WorkerTest:
                     line = f_in.readline()
                 feature_id = f'{source_file}||{scan}'
                 self.spectrum_dict[feature_id] = peak_list
-        print(f"len(self.spectrum_dict) = {len(self.spectrum_dict)}")
-        print()
+        logger.info(f"len(self.spectrum_dict) = {len(self.spectrum_dict)}")
 
     def _match_AA_novor(
         self,

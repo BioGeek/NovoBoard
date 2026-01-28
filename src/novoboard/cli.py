@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 
@@ -10,6 +11,8 @@ from novoboard.accuracy import WorkerTest
 from novoboard.decoy import generate_decoy_mgf
 from novoboard.fdr import validate_FDR
 from novoboard.plotting import plot_fdr_validation
+
+logger = logging.getLogger(__name__)
 
 
 def download_data(data_dir: str) -> None:
@@ -25,9 +28,9 @@ def download_data(data_dir: str) -> None:
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
     
-    print(f"Downloading data to {data_dir}...")
+    logger.info(f"Downloading data to {data_dir}...")
     gdown.download_folder(folder_url, output=data_dir, quiet=False)
-    print("Download complete.")
+    logger.info("Download complete.")
 
 
 def run_accuracy(data_dir: str, col_score: str, col_aa_score: str) -> None:
@@ -104,6 +107,20 @@ def run_fdr_validation(
     plot_fdr_validation(results_list, samples, output_path)
 
 
+def setup_logging(verbose: bool = False) -> None:
+    """Configure logging for CLI usage.
+    
+    Args:
+        verbose: If True, set DEBUG level; otherwise INFO level
+    """
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
@@ -145,8 +162,16 @@ Examples:
         action='store_true',
         help='Skip FDR validation step'
     )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='Enable verbose (debug) logging'
+    )
     
     args = parser.parse_args()
+    
+    # Set up logging
+    setup_logging(verbose=args.verbose)
     
     # Column names for score values
     col_score = "ALC (%)"

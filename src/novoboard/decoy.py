@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import random
 import numpy as np
 from novoboard import config
+
+logger = logging.getLogger(__name__)
 
 
 def generate_decoy_mgf(
@@ -29,8 +32,8 @@ def generate_decoy_mgf(
             - 'distance': Remove peaks matching AA mass differences
         sampling_rate: Fraction of peaks to keep (0.0-1.0)
     """
-    print(f"peak_sampling = {peak_sampling}")
-    print(f"sampling_rate = {sampling_rate}")
+    logger.info(f"peak_sampling = {peak_sampling}")
+    logger.info(f"sampling_rate = {sampling_rate}")
     
     for input_mgf in input_mgf_list:
 
@@ -48,13 +51,13 @@ def generate_decoy_mgf(
         if peak_sampling in ('random', 'permutation', 'distance'):
             with open(input_mgf, 'r') as f:
                 peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in f if line[0].isdigit()]
-            print(f"len(peaks_distr) = {len(peaks_distr)}")
+            logger.info(f"len(peaks_distr) = {len(peaks_distr)}")
         elif peak_sampling == '500Da':
             with open(input_mgf, 'r') as f:
                 peaks_distr = [[float(x) for x in re.split(r' |\r|\n', line)[:2]] for line in f if line[0].isdigit()]
-            print(f"len(peaks_distr) = {len(peaks_distr)}")
+            logger.info(f"len(peaks_distr) = {len(peaks_distr)}")
             removed_peaks_distr = [[x, y] for x, y in peaks_distr if x < 500]
-            print(f"len(removed_peaks_distr) = {len(removed_peaks_distr)}")
+            logger.info(f"len(removed_peaks_distr) = {len(removed_peaks_distr)}")
         elif peak_sampling in ('intensity', 'intensity_mass'):
             with open(input_mgf, 'r') as f_in:
                 while True:
@@ -92,8 +95,8 @@ def generate_decoy_mgf(
                     removed_peaks = peak_list_sorted[num_sampling:]
                     removed_peaks_distr += removed_peaks
                     peaks_distr += peak_list
-            print(f"len(peaks_distr) = {len(peaks_distr)}")
-            print(f"len(removed_peaks_distr) = {len(removed_peaks_distr)}")
+            logger.info(f"len(peaks_distr) = {len(peaks_distr)}")
+            logger.info(f"len(removed_peaks_distr) = {len(removed_peaks_distr)}")
 
         sampling_peaks_distr: list[list[float]] = []
         noise_peaks_distr: list[list[float]] = []
@@ -193,7 +196,6 @@ def generate_decoy_mgf(
                     f_out.write(line)  # END IONS line
                     f_out.write(f_in.readline())  # empty line between spectra
         
-        print(f"len(sampling_peaks_distr) = {len(sampling_peaks_distr)}")
-        print(f"len(noise_peaks_distr) = {len(noise_peaks_distr)}")
-        print(f"len(decoy_peaks_distr) = {len(decoy_peaks_distr)}")
-        print()
+        logger.info(f"len(sampling_peaks_distr) = {len(sampling_peaks_distr)}")
+        logger.info(f"len(noise_peaks_distr) = {len(noise_peaks_distr)}")
+        logger.info(f"len(decoy_peaks_distr) = {len(decoy_peaks_distr)}")

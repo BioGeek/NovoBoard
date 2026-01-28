@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os.path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from novoboard.accuracy import WorkerTest
+
+logger = logging.getLogger(__name__)
 
 
 def read_denovo(
@@ -54,12 +57,12 @@ def calculate_FDR(
     Returns:
         Tuple of (combined_df, fdr_df, score_thresholds, counts)
     """
-    print(f"target_csv = {target_csv}")
-    print(f"decoy_csv = {decoy_csv}")
+    logger.info(f"target_csv = {target_csv}")
+    logger.info(f"decoy_csv = {decoy_csv}")
     target_psm = read_denovo(target_csv, selected_features)
     decoy_psm = read_denovo(decoy_csv, selected_features)
-    print(f"len(target_psm) = {len(target_psm)}")
-    print(f"len(decoy_psm) = {len(decoy_psm)}")
+    logger.info(f"len(target_psm) = {len(target_psm)}")
+    logger.info(f"len(decoy_psm) = {len(decoy_psm)}")
     dfs = pd.concat([target_psm, decoy_psm], keys=['target', 'decoy']).reset_index().rename(columns={'level_0': 'spectrum'})
     # Vectorized is_target
     dfs['is_target'] = dfs['spectrum'] == 'target'
@@ -70,9 +73,9 @@ def calculate_FDR(
     dfs_fdr = dfs.copy()
     # Vectorized feature_id modification for decoys
     dfs_fdr.loc[~dfs_fdr['is_target'], 'feature_id'] = dfs_fdr.loc[~dfs_fdr['is_target'], 'feature_id'] + '||decoy'
-    print(f"len(dfs) = {len(dfs)}")
-    print(f"len(dfs_fdr) = {len(dfs_fdr)}")
-    print(f"sum(dfs_fdr['is_target']) = {sum(dfs_fdr['is_target'])}")
+    logger.info(f"len(dfs) = {len(dfs)}")
+    logger.info(f"len(dfs_fdr) = {len(dfs_fdr)}")
+    logger.info(f"sum(dfs_fdr['is_target']) = {sum(dfs_fdr['is_target'])}")
     
     # fdr estimation
     cumsum = range(1, len(dfs_fdr) + 1)
@@ -155,11 +158,11 @@ def validate_FDR(
     denovo_df['matched_ion'] = accuracy_df['matched_ion']
     denovo_df['recall_peptide_I'] = accuracy_df['matched_ion'] == accuracy_df['target_ion']
     denovo_df['recall_peptide_T'] = accuracy_df['matched_ion'] >= accuracy_df['target_ion'] * T_pct
-    print(f"len(denovo_df) = {len(denovo_df)}")
-    print(f"  with recall_AA = {len(denovo_df[~denovo_df['recall_AA'].isna()])}")
+    logger.info(f"len(denovo_df) = {len(denovo_df)}")
+    logger.info(f"  with recall_AA = {len(denovo_df[~denovo_df['recall_AA'].isna()])}")
     # Fix the boolean indexing warning
     mask = ~denovo_df['recall_AA'].isna() & denovo_df['is_target']
-    print(f"    is_target = {mask.sum()}")
+    logger.info(f"    is_target = {mask.sum()}")
 
     # calculate true FDR on annotated target spectra
     df = denovo_df[~denovo_df['recall_AA'].isna() & denovo_df['is_target']].copy()
