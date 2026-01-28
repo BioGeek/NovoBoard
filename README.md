@@ -110,7 +110,3 @@ If you use NovoBoard in your research, please cite:
 
 > "NovoBoard: a comprehensive framework for evaluating the false discovery rate and accuracy of de novo peptide sequencing"
 > https://doi.org/10.1101/2024.04.16.589668
-
-## License
-
-See LICENSE file for details.
