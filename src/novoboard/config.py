@@ -106,3 +106,22 @@ mass_AA_min = mass_AA["G"]  # 57.02146
 
 MZ_MAX = 8000.0
 
+# ==============================================================================
+# TOLERANCE CONSTANTS
+# ==============================================================================
+
+# Mass tolerance for cumulative mass comparison in AA matching (Da)
+MASS_TOLERANCE_CUMULATIVE = 0.5
+
+# Mass tolerance for individual amino acid mass comparison (Da)
+MASS_TOLERANCE_AA = 0.1
+
+# Tolerance for fragment ion matching (Da)
+ION_TOLERANCE = 0.02
+
+# Average amino acid mass for peptide length estimation (Da)
+AVG_AA_MASS = 122.8652943
+
+# Default sampling rate for decoy generation
+DEFAULT_SAMPLING_RATE = 0.5
+
